@@ -1,42 +1,40 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys")
-const qrcode = require("qrcode-terminal")
+const P = require("pino")
 
 async function startBot() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth')
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys')
     const sock = makeWASocket({
         auth: state,
-        printQRInTerminal: true
+        printQRInTerminal: false,
+        logger: P({ level: 'silent' }),
+        browser: ["Ubuntu", "Chrome", "20.0.04"]
     })
-
+    if (!sock.authState.creds.registered) {
+        const phoneNumber = "94754310112"
+        setTimeout(async () => {
+            let code = await sock.requestPairingCode(phoneNumber)
+            console.log(`\n======================================`)
+            console.log(` PAIRING CODE: ${code}`)
+            console.log(`======================================\n`)
+        }, 3000)
+    }
     sock.ev.on('creds.update', saveCreds)
-
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update
-        if(connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== 1
-            if(shouldReconnect) startBot()
-        } else if(connection === 'open') {
+        if (connection === 'close') {
+            const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode!== DisconnectReason.loggedOut
+            if (shouldReconnect) startBot()
+        } else if (connection === 'open') {
             console.log("✅ Bot 24/7 Online!")
         }
     })
-
-    sock.ev.on('group-participants.update', async (anu) => {
-        if (anu.action == 'add') {
-            await sock.sendMessage(anu.id, { text: `Welcome මචං! 🎉 @${anu.participants[0].split('@')[0]} අපේ Group එකට!`, mentions: anu.participants })
-        }
-    })
-
     sock.ev.on('messages.upsert', async (m) => {
         const msg = m.messages[0]
         if (!msg.message || msg.key.fromMe) return
-        const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").toLowerCase()
         const from = msg.key.remoteJid
-
-        if (text === '!rules') {
-            await sock.sendMessage(from, { text: "📌 *GROUP RULES*\n1. කුණුහරප එපා\n2. Link එපා\n3. Respect එකෙන් ඉන්න" })
-        }
-        if (text === '!menu' || text === 'hi' || text === 'hello') {
-            await sock.sendMessage(from, { text: "හෙලෝ! මම Group Bot 🤖\n!rules - Rules බලන්න" })
+        const text = msg.message.conversation || msg.message.extendedTextMessage?.text || ""
+        if (text === ".ping") {
+            await sock.sendMessage(from, { text: "Pong! 🏓 Bot Online!" })
         }
     })
 }
